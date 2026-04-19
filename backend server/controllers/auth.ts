@@ -1,0 +1,27 @@
+import { Request, Response } from 'express';
+import { prisma } from '../configs/prisma.js';
+import * as Sentry from "@sentry/node";
+
+// Upsert a user record. Expected body: { id, email, name, image }
+export const upsertUser = async (req: Request, res: Response) => {
+  try {
+    const { id, email, name, image } = req.body;
+
+    if (!id || !email) {
+      return res.status(400).json({ message: 'id and email are required' });
+    }
+
+    const user = await prisma.user.upsert({
+      where: { id },
+      update: { email, name: name ?? '', image: image ?? '' },
+      create: { id, email, name: name ?? '', image: image ?? '' }
+    });
+
+    return res.json({ user });
+  } catch (err: any) {
+    Sentry.captureException(err);
+    return res.status(500).json({ message: err.message || 'Server error' });
+  }
+};
+
+export default upsertUser;

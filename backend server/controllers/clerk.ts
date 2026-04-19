@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { verifyWebhook } from '@clerk/express/webhooks';
 import { prisma } from '../configs/prisma.js';
+import * as Sentry from "@sentry/node";
 
 const clerkWebhooks = async (req: Request, res: Response) => {
     try {
@@ -15,7 +16,7 @@ const clerkWebhooks = async (req: Request, res: Response) => {
                 await prisma.user.create({
                     data: {
                         id: data.id,
-                        email: data?.email_email_addresses[0]?.email_address,
+                        email: data?.email_addresses[0]?.email_address,
                         name: data?.first_name + " " + data?.last_name,
                         image: data?.image_url,
                     }
@@ -29,7 +30,7 @@ const clerkWebhooks = async (req: Request, res: Response) => {
                         id: data.id
                     },
                     data: {
-                        email: data?.email_email_addresses[0]?.email_address,
+                        email: data?.email_addresses[0]?.email_address,
                         name: data?.first_name + " " + data?.last_name,
                         image: data?.image_url,
                     }
@@ -80,6 +81,7 @@ const clerkWebhooks = async (req: Request, res: Response) => {
         res.json({ message: "Webhook Recieved : " + type });
 
     } catch (error: any) {
+        Sentry.captureException(error);
         res.status(500).json({ message: error.message });
     }
 };

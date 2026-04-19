@@ -1,0 +1,12 @@
+{
+  "name": "ai-short-video-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "server": "npm --prefix \"backend server\" run server",
+    "build-backend": "npm --prefix \"backend server\" run build"
+  },
+  "dependencies": {
+    "@sentry/node": "^10.49.0"
+  }
+}

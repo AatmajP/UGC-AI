@@ -1,6 +1,6 @@
 import { DollarSignIcon, FolderEditIcon, GalleryHorizontalEnd, MenuIcon, SparkleIcon, XIcon } from 'lucide-react';
 import { GhostButton, PrimaryButton } from './Buttons';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { assets } from '../assets/assets';
@@ -12,6 +12,24 @@ export default function Navbar() {
     const { user } = useUser();
     const { openSignIn, openSignUp } = useClerk();
     const [isOpen, setIsOpen] = useState(false);
+
+    useEffect(() => {
+        if (!user) return;
+
+        const payload = {
+            id: user.id,
+            email: user.emailAddresses?.[0]?.emailAddress || user.primaryEmailAddress?.emailAddress || '',
+            name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.fullName || '',
+            image: user.profileImageUrl || ''
+        };
+
+        // fire-and-forget upsert to backend
+        fetch('http://localhost:5000/api/auth/upsert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        }).catch(() => { /* ignore errors for now */ });
+    }, [user]);
 
     const navLinks = [
         { name: 'Home', href: '/#' },
