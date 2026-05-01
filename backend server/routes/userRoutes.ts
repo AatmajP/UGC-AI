@@ -1,6 +1,7 @@
 import express from 'express';
-import { getAllProjects, getProjectById, getUserCredits, toggleProjectPublic } from '../controllers/userController.js';
-import { protect } from '../middlewares/auth';
+import { getAllProjects, getProjectById, getUserCredits, toggleProjectPublic } 
+from '../controllers/userController.js';
+import { protect } from '../middleware/auth.js';
 
 const userRouter = express.Router();
 

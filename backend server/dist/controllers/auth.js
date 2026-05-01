@@ -1,4 +1,5 @@
 import { prisma } from '../configs/prisma.js';
+import * as Sentry from "@sentry/node";
 // Upsert a user record. Expected body: { id, email, name, image }
 export const upsertUser = async (req, res) => {
     try {
@@ -14,6 +15,7 @@ export const upsertUser = async (req, res) => {
         return res.json({ user });
     }
     catch (err) {
+        Sentry.captureException(err);
         return res.status(500).json({ message: err.message || 'Server error' });
     }
 };
