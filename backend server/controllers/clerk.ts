@@ -59,15 +59,16 @@ const clerkWebhooks = async (req: Request, res: Response) => {
                         data?.subscription_items?.[0]?.plan?.slug;
 
                     if (planId !== "pro" && planId !== "premium") {
+                        console.error(`Invalid plan: ${planId}`);
                         return res.status(400).json({ message: "Invalid plan" });
                     }
 
-                    console.log(planId);
+                    console.log(`Payment successful for user ${clerkUserId}, plan: ${planId}, credits: ${credits[planId]}`);
 
                     await prisma.user.update({
                         where: { id: clerkUserId },
                         data: {
-                            credits: { increment: credits[planId] }
+                            credits: credits[planId]
                         }
                     });
                 }
@@ -82,6 +83,7 @@ const clerkWebhooks = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         Sentry.captureException(error);
+        console.error("Webhook error:", error.message);
         res.status(500).json({ message: error.message });
     }
 };

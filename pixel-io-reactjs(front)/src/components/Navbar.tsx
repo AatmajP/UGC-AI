@@ -2,34 +2,21 @@ import { DollarSignIcon, FolderEditIcon, GalleryHorizontalEnd, MenuIcon, Sparkle
 import { GhostButton, PrimaryButton } from './Buttons';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { assets } from '../assets/assets';
-import { UserButton, useUser, useClerk } from '@clerk/clerk-react';
+import { UserButton, useUser, useClerk, useAuth } from '@clerk/clerk-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import api from '../configs/axios';
 
 export default function Navbar() {
     const navigate = useNavigate();
     const { user } = useUser();
     const { openSignIn, openSignUp } = useClerk();
     const [isOpen, setIsOpen] = useState(false);
-
-    useEffect(() => {
-        if (!user) return;
-
-        const payload = {
-            id: user.id,
-            email: user.emailAddresses?.[0]?.emailAddress || user.primaryEmailAddress?.emailAddress || '',
-            name: [user.firstName, user.lastName].filter(Boolean).join(' ') || user.fullName || '',
-            image: user.profileImageUrl || ''
-        };
-
-        // fire-and-forget upsert to backend
-        fetch('http://localhost:5000/api/auth/upsert', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        }).catch(() => { /* ignore errors for now */ });
-    }, [user]);
+    const [credits, setCredits] = useState(0);
+    const {pathname} = useLocation();
+    const {getToken} = useAuth();
 
     const navLinks = [
         { name: 'Home', href: '/#' },
@@ -37,7 +24,26 @@ export default function Navbar() {
         { name: 'Community', href: '/community' },
         { name: 'Plans', href: '/plans' },
     ];
+    const getUserCredits = async () => {
+  try {
+    const token = await getToken()
+    const { data } = await api.get('/api/user/credits', {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    setCredits(data.credits)
+  } catch (error: any) {
+    toast.error(error?.response?.data?.message || error.message)
+    console.log(error);
+  }
+}
 
+useEffect(() => {
+  if (user) {
+    (async () => await getUserCredits())();
+  }
+},[user, pathname])
+    
+   
     return (
         <motion.nav className='fixed top-5 left-0 right-0 z-50 px-4'
             initial={{ y: -100, opacity: 0 }}
@@ -69,7 +75,7 @@ export default function Navbar() {
                     <div className='flex gap-2 items-center'>
                         <GhostButton onClick={() => navigate('/plans')}
                             className='border-none text-gray-300 sm:py-1.5 text-xs'>
-                            Credits:
+                            Credits: {credits}
                         </GhostButton>
                         <UserButton>
                             <UserButton.MenuItems>
@@ -128,7 +134,7 @@ export default function Navbar() {
                 ) : (
                     <div className="flex flex-col items-center gap-4">
                         <GhostButton onClick={() => { navigate('/plans'); setIsOpen(false); }} className='border-none text-white'>
-                            Credits:
+                            Credits: {credits}
                         </GhostButton>
                         <UserButton>
                             <UserButton.MenuItems>

@@ -1,13 +1,19 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import type { Project } from "../types";
-import { dummyGenerations } from "../assets/assets";
+
 import { Loader2Icon, Video, ImageIcon, RotateCcw } from "lucide-react";
 import { GhostButton, PrimaryButton } from "../components/Buttons";
 import { motion } from "framer-motion";
+import { useUser, useAuth } from "@clerk/clerk-react";
+import toast from "react-hot-toast";
+import type { dummyGenerations } from "../assets/assets";
+import api from "../configs/axios";
 
 const Result = () => {
   const { projectId } = useParams();
+  const {getToken} = useAuth();
+  const { user, isLoaded } = useUser();
   const navigate = useNavigate();
   const [project, setProjectData] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -15,29 +21,73 @@ const Result = () => {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoGenerated, setVideoGenerated] = useState(false);
 
-  const handleGenerateVideo = () => {
-    setIsGeneratingVideo(true);
-    // Simulate API call for video generation
-    setTimeout(() => {
-      setIsGeneratingVideo(false);
-      setVideoGenerated(true);
-      // In a real app, you would fetch/update the project with the video URL here
-    }, 3000);
-  };
+  const fetchProjectData = async () => {
+  try {
+    const token = await getToken()
+    const { data } = await api.get(`/api/user/projects/${projectId}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    setProjectData(data.project)
+    setIsGeneratingVideo(data.project.isGenerating)
+    setVideoGenerated(!!data.project.generatedVideo)
+    setLoading(false)
+
+  } catch (error: any) {
+    toast.error(error?.response?.data?.message || error.message);
+    console.log(error);
+  }
+}
+
+const handleGenerateVideo = async () => {
+  setIsGeneratingVideo(true)
+
+  try {
+    const token = await getToken();
+    const { data } = await api.post('/api/project/video', { projectId }, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 600000 // 10 minutes timeout for long video generation
+    })
+
+    setProjectData((prev) =>
+      prev
+        ? {
+            ...prev,
+            generatedVideo: data.videoUrl,
+          }
+        : prev
+    )
+
+    setVideoGenerated(true);
+    setIsGeneratingVideo(false);
+    toast.success(data.message || "Video generated successfully!");
+
+  } catch (error: any) {
+    setIsGeneratingVideo(false);
+    const errorMsg = error?.response?.data?.message || error.message || "Failed to generate video";
+    toast.error(errorMsg);
+    console.error("Video generation error:", error);
+  }
+}
 
   useEffect(() => {
-    const fetchProjectData = async () => {
-      // Simulate API call
-      setTimeout(() => {
-        const found = dummyGenerations.find((p) => p.id === projectId) || dummyGenerations[0];
-        setProjectData(found);
-        setVideoGenerated(!!found.generatedVideo);
-        setLoading(false);
-      }, 2000);
-    };
-
+  if(user && !project?.id){
     fetchProjectData();
-  }, [projectId]);
+  }else if(!user && !isLoaded){
+    navigate('/')
+   }
+  }, [user]);
+
+  //Fetch project every 10 seconds
+  useEffect(() => {
+    if (user && isGeneratingVideo){
+      const interval = setInterval(() => {
+        fetchProjectData();
+      }, 10000);
+
+      return () => clearInterval(interval);
+    }
+  }, [user, isGeneratingVideo]);
 
   if (loading || !project) {
     return (
@@ -126,6 +176,14 @@ const Result = () => {
                   Download Image
                 </button>
                 <button
+                  onClick={() => {
+                    if (project.generatedVideo) {
+                      const link = document.createElement('a');
+                      link.href = project.generatedVideo;
+                      link.download = `pixel-io-${project.id}.mp4`;
+                      link.click();
+                    }
+                  }}
                   disabled={!videoGenerated}
                   className="w-full flex items-center justify-center gap-3 bg-white/5 border border-white/10 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all rounded-2xl py-4 font-medium"
                 >
@@ -183,3 +241,4 @@ const Result = () => {
 };
 
 export default Result;
+
