@@ -12,7 +12,7 @@ import api from "../configs/axios";
 
 const Result = () => {
   const { projectId } = useParams();
-  const {getToken} = useAuth();
+  const { getToken } = useAuth();
   const { user, isLoaded } = useUser();
   const navigate = useNavigate();
   const [project, setProjectData] = useState<Project | null>(null);
@@ -20,81 +20,206 @@ const Result = () => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
   const [videoGenerated, setVideoGenerated] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchProjectData = async () => {
-  try {
-    const token = await getToken()
-    const { data } = await api.get(`/api/user/projects/${projectId}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+    try {
+      if (!projectId) {
+        console.warn("fetchProjectData: projectId is missing");
+        return;
+      }
 
-    setProjectData(data.project)
-    setIsGeneratingVideo(data.project.isGenerating)
-    setVideoGenerated(!!data.project.generatedVideo)
-    setLoading(false)
+      const token = await getToken();
+      if (!token) {
+        console.error("fetchProjectData: Failed to get token");
+        setError("Authentication token unavailable");
+        return;
+      }
 
-  } catch (error: any) {
-    toast.error(error?.response?.data?.message || error.message);
-    console.log(error);
-  }
-}
+      console.log("Fetching project data for:", projectId);
+      const { data } = await api.get(`/api/user/projects/${projectId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      console.log("Project data fetched:", data);
+      setProjectData(data.project);
+      setIsGeneratingVideo(data.project.isGenerating);
+      setVideoGenerated(!!data.project.generatedVideo);
+      setLoading(false);
+      setError(null);
+
+    } catch (error: any) {
+      console.error("fetchProjectData error:", error);
+      const errorMsg = error?.response?.data?.message || error?.message || "Failed to load project";
+      setError(errorMsg);
+      if (loading) {
+        toast.error(errorMsg);
+      }
+    }
+  };
 
 const handleGenerateVideo = async () => {
-  setIsGeneratingVideo(true)
+  console.log("=== Generate Video Button Clicked ===");
+  console.log({ isGeneratingVideo, videoGenerated, projectId, hasProject: !!project });
+
+  // Validation checks
+  if (!projectId) {
+    const msg = "Project ID is missing";
+    console.error(msg);
+    toast.error(msg);
+    return;
+  }
+
+  if (!project) {
+    const msg = "Project data not loaded";
+    console.error(msg);
+    toast.error(msg);
+    return;
+  }
+
+  if (isGeneratingVideo) {
+    console.warn("Video generation already in progress");
+    return;
+  }
+
+  setIsGeneratingVideo(true);
+  setError(null);
 
   try {
+    console.log("Step 1: Getting authentication token...");
     const token = await getToken();
-    const { data } = await api.post('/api/project/video', { projectId }, {
-      headers: { Authorization: `Bearer ${token}` },
-      timeout: 600000 // 10 minutes timeout for long video generation
-    })
 
-    setProjectData((prev) =>
-      prev
-        ? {
-            ...prev,
-            generatedVideo: data.videoUrl,
-          }
-        : prev
-    )
+    if (!token) {
+      throw new Error("No authentication token available. Please sign in again.");
+    }
+    console.log("Step 1 ✓: Token obtained");
+
+    console.log("Step 2: Calling API endpoint /api/project/video");
+    console.log({ projectId, endpoint: "/api/project/video", method: "POST" });
+
+    const response = await api.post(
+      "/api/project/video",
+      { projectId },
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 600000 // 10 minutes
+      }
+    );
+
+    const data = response.data;
+    console.log("Step 2 ✓: API Response received:", data);
+
+    if (!data.videoUrl) {
+      throw new Error("Video URL not received from server");
+    }
+
+    console.log("Step 3: Updating local state with video URL");
+    setProjectData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        generatedVideo: data.videoUrl
+      };
+    });
 
     setVideoGenerated(true);
     setIsGeneratingVideo(false);
-    toast.success(data.message || "Video generated successfully!");
+    console.log("Step 3 ✓: State updated successfully");
+
+    toast.success(data.message || "✨ Video generated successfully!");
+    console.log("=== Video Generation Complete ===");
 
   } catch (error: any) {
+    console.error("=== Video Generation Failed ===");
+    console.error("Error Details:", {
+      name: error?.name,
+      message: error?.message,
+      response: error?.response?.status,
+      data: error?.response?.data,
+      code: error?.code,
+      isAxiosError: error?.isAxiosError
+    });
+
     setIsGeneratingVideo(false);
-    const errorMsg = error?.response?.data?.message || error.message || "Failed to generate video";
-    toast.error(errorMsg);
-    console.error("Video generation error:", error);
-  }
-}
 
-  useEffect(() => {
-  if(user && !project?.id){
-    fetchProjectData();
-  }else if(!user && !isLoaded){
-    navigate('/')
-   }
-  }, [user]);
+    // Determine the best error message
+    let errorMsg = "Failed to generate video";
 
-  //Fetch project every 10 seconds
-  useEffect(() => {
-    if (user && isGeneratingVideo){
-      const interval = setInterval(() => {
-        fetchProjectData();
-      }, 10000);
-
-      return () => clearInterval(interval);
+    if (error?.response?.status === 401) {
+      errorMsg = "Authentication failed. Please sign in again.";
+    } else if (error?.response?.status === 402) {
+      errorMsg = "Insufficient credits to generate video.";
+    } else if (error?.response?.data?.message) {
+      errorMsg = error.response.data.message;
+    } else if (error?.message) {
+      errorMsg = error.message;
+    } else if (error?.code === "ECONNABORTED") {
+      errorMsg = "Request timeout. Video generation is taking longer than expected.";
     }
-  }, [user, isGeneratingVideo]);
+
+    setError(errorMsg);
+    toast.error(errorMsg);
+  }
+};
+
+  // Initial load and auth check
+  useEffect(() => {
+    console.log("useEffect: Auth state changed", { isLoaded, userExists: !!user });
+
+    if (!isLoaded) {
+      console.log("Waiting for Clerk to load...");
+      return;
+    }
+
+    if (!user) {
+      console.log("No user found, redirecting to home");
+      navigate("/");
+      return;
+    }
+
+    if (!project && !loading) {
+      console.log("Fetching project data after auth confirmed");
+      fetchProjectData();
+    }
+  }, [isLoaded, user]); // Removed navigate from deps to prevent re-renders
+
+  // Poll for video generation progress
+  useEffect(() => {
+    console.log("useEffect: Polling setup", { isGeneratingVideo, projectId });
+
+    if (!isGeneratingVideo || !projectId || !user) {
+      return;
+    }
+
+    console.log("Starting video generation polling...");
+    const interval = setInterval(() => {
+      console.log("Polling for video generation status...");
+      fetchProjectData();
+    }, 5000); // Check every 5 seconds
+
+    return () => {
+      console.log("Stopping video generation polling");
+      clearInterval(interval);
+    };
+  }, [isGeneratingVideo, projectId, user]);
 
   if (loading || !project) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-black text-white">
         <div className="flex flex-col items-center gap-4">
-          <Loader2Icon className="animate-spin text-indigo-500 size-10" />
-          <p className="text-gray-400 text-sm animate-pulse">Loading your masterpiece...</p>
+          {error ? (
+            <>
+              <div className="text-red-400 text-center">
+                <p className="font-semibold">Error Loading Project</p>
+                <p className="text-sm mt-2">{error}</p>
+              </div>
+            </>
+          ) : (
+            <>
+              <Loader2Icon className="animate-spin text-indigo-500 size-10" />
+              <p className="text-gray-400 text-sm animate-pulse">Loading your masterpiece...</p>
+            </>
+          )}
         </div>
       </div>
     );
